@@ -14,12 +14,19 @@ def download():
     if not video_url:
         return jsonify({"status": "error", "message": "লিঙ্ক দেওয়া হয়নি!"}), 400
 
+    # এখানে আমি শক্তিশালী হেডার যোগ করেছি যা ফেসবুক/টিকটকের ব্লক ভাঙবে
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
         'restrictfilenames': True,
         'noplaylist': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Connection': 'keep-alive',
+            'Referer': 'https://www.facebook.com/'
+        }
     }
 
     try:
@@ -37,5 +44,6 @@ def download():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-          
+    # Render সাধারণত পোর্ট ৮০০০ বা ১০০০০ ব্যবহার করে, তাই অটোমেটিক ডিটেকশনের ব্যবস্থা রাখা ভালো
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

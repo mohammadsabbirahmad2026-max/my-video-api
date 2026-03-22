@@ -6,34 +6,43 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Sabbir's Fast API is LIVE! 🚀"
+    return "Sabbir's Multi-Downloader API is LIVE! 🚀"
 
 @app.route('/download')
 def download():
-    video_url = request.args.get('url')
-    if not video_url:
-        return jsonify({"status": "error", "message": "URL missing"}), 400
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"status": "error", "message": "No URL provided"}), 400
 
     ydl_opts = {
-        # এই লাইনটি অডিওসহ ভিডিওর সেরা ফাইলটি খুঁজে নেবে (Merge করা ফাইল)
         'format': 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Referer': 'https://www.google.com/',
-        }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # download=False মানে সার্ভারে কোনো ফাইল সেভ হবে না
-            info = ydl.extract_info(video_url, download=False)
-            
-            # অডিওসহ ভিডিওর লিঙ্ক ফিল্টার করা
+            info = ydl.extract_info(url, download=False)
             formats = info.get('formats', [])
-            final_link = None
+            video_url = None
+            
+            for f in reversed(formats):
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
+                    video_url = f.get('url')
+                    break
+            
+            return jsonify({
+                "status": "success",
+                "title": info.get('title', 'Sabbir Video'),
+                "video_url": video_url or info.get('url'),
+                "thumbnail": info.get('thumbnail')
+            })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
             
             # আমরা এমন লিঙ্ক খুঁজবো যাতে অডিও (acodec) এবং ভিডিও (vcodec) দুটোই আছে
             for f in reversed(formats):

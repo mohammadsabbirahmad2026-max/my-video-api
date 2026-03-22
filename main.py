@@ -1,39 +1,62 @@
-import os
-import subprocess
+from flask import Flask, request, jsonify
 import yt_dlp
-from flask import Flask, request, jsonify, send_from_directory
+import os
 
 app = Flask(__name__)
-DOWNLOAD_FOLDER = 'downloads'
 
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
+@app.route('/')
+def home():
+    return "Sabbir's Fast API is LIVE! 🚀"
 
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
     if not video_url:
-        return jsonify({"status": "error", "message": "No URL provided"}), 400
+        return jsonify({"status": "error", "message": "URL missing"}), 400
 
-    # ফাইলের নাম ইউনিক করার জন্য
-    file_name = "sabbir_video"
-    output_template = os.path.join(DOWNLOAD_FOLDER, f"{file_name}.%(ext)s")
-    
     ydl_opts = {
-        # টারমাক্সের মতো অডিও-ভিডিও মার্জ করার কমান্ড
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': output_template,
+        # এই লাইনটি অডিওসহ ভিডিওর সেরা ফাইলটি খুঁজে নেবে (Merge করা ফাইল)
+        'format': 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Referer': 'https://www.google.com/',
         }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=True) # এখানে ডাউনলোড শুরু হবে
+            # download=False মানে সার্ভারে কোনো ফাইল সেভ হবে না
+            info = ydl.extract_info(video_url, download=False)
+            
+            # অডিওসহ ভিডিওর লিঙ্ক ফিল্টার করা
+            formats = info.get('formats', [])
+            final_link = None
+            
+            # আমরা এমন লিঙ্ক খুঁজবো যাতে অডিও (acodec) এবং ভিডিও (vcodec) দুটোই আছে
+            for f in reversed(formats):
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4':
+                    final_link = f.get('url')
+                    break
+            
+            # যদি উপরে না পায়, তবে ডিফল্ট সবথেকে ভালো লিঙ্কটি নিবে
+            if not final_link:
+                final_link = info.get('url')
+
+            return jsonify({
+                "status": "success",
+                "title": info.get('title', 'Sabbir Video'),
+                "video_url": final_link,
+                "audio_url": final_link, # ভিডিওর ভেতর গান থাকবেই
+                "thumbnail": info.get('thumbnail')
+            })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
             actual_filename = ydl.prepare_filename(info)
             
             # ভিডিওর আসল নাম এবং ডাটা সংগ্রহ

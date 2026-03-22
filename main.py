@@ -6,44 +6,60 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Sabbir's All-in-One Video API is LIVE! 🚀"
+    return "Sabbir's Multi-Source Video API is LIVE! 🚀"
 
 @app.route('/download')
 def download():
-    video_url = request.args.get('url')
-    if not video_url:
-        return jsonify({"status": "error", "message": "লিঙ্ক দেওয়া হয়নি!"}), 400
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"status": "error", "message": "No URL provided"}), 400
 
-    # এখানে আমি শক্তিশালী হেডার যোগ করেছি যা ফেসবুক/টিকটকের ব্লক ভাঙবে
     ydl_opts = {
-        'format': 'best',
+        'format': 'bestvideo+bestaudio/best', # সব ফরম্যাট চেক করবে
         'quiet': True,
         'no_warnings': True,
-        'restrictfilenames': True,
-        'noplaylist': True,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-            'Connection': 'keep-alive',
-            'Referer': 'https://www.facebook.com/'
         }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            direct_link = info.get('url')
-            title = info.get('title', 'Video')
+            info = ydl.extract_info(url, download=False)
+            
+            # ব্যাকআপ লিঙ্ক তৈরির লজিক
+            formats = info.get('formats', [])
+            
+            # ১. সেরা ভিডিও লিঙ্ক (অডিওসহ)
+            video_url = info.get('url')
+            
+            # ২. ব্যাকআপ ভিডিও লিঙ্ক (যদি প্রথমটা কাজ না করে)
+            backup_video = None
+            for f in reversed(formats):
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4':
+                    backup_video = f.get('url')
+                    break
+            
+            # ৩. আলাদা অডিও লিঙ্ক (শুধু গান/মিউজিক)
+            audio_url = None
+            for f in formats:
+                if f.get('vcodec') == 'none' and f.get('acodec') != 'none':
+                    audio_url = f.get('url')
+                    break
 
             return jsonify({
                 "status": "success",
-                "title": title,
-                "video_url": direct_link
+                "title": info.get('title', 'Sabbir Video'),
+                "video_url": video_url or backup_video, # মেইন না থাকলে ব্যাকআপ
+                "backup_url": backup_video,
+                "audio_url": audio_url,
+                "thumbnail": info.get('thumbnail'),
+                "source": info.get('extractor_key')
             })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    # Render সাধারণত পোর্ট ৮০০০ বা ১০০০০ ব্যবহার করে, তাই অটোমেটিক ডিটেকশনের ব্যবস্থা রাখা ভালো
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+    

@@ -1,18 +1,28 @@
-from flask import Flask, request, jsonify
-import yt_dlp
 import os
+import subprocess
+import yt_dlp
+from flask import Flask, request, jsonify, send_from_directory
 
 app = Flask(__name__)
+DOWNLOAD_FOLDER = 'downloads'
+
+if not os.path.exists(DOWNLOAD_FOLDER):
+    os.makedirs(DOWNLOAD_FOLDER)
 
 @app.route('/download')
 def download():
-    url = request.args.get('url')
-    if not url:
+    video_url = request.args.get('url')
+    if not video_url:
         return jsonify({"status": "error", "message": "No URL provided"}), 400
 
+    # ফাইলের নাম ইউনিক করার জন্য
+    file_name = "sabbir_video"
+    output_template = os.path.join(DOWNLOAD_FOLDER, f"{file_name}.%(ext)s")
+    
     ydl_opts = {
-        # 'best' নিশ্চিত করবে যে অডিও এবং ভিডিও একসাথেই আছে
-        'format': 'best[ext=mp4]/best', 
+        # টারমাক্সের মতো অডিও-ভিডিও মার্জ করার কমান্ড
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': output_template,
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
@@ -23,17 +33,43 @@ def download():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(video_url, download=True) # এখানে ডাউনলোড শুরু হবে
+            actual_filename = ydl.prepare_filename(info)
             
-            # ভিডিও লিঙ্ক (অডিওসহ)
-            video_url = info.get('url')
-            
-            # শুধু অডিও লিঙ্ক বের করার চেষ্টা
-            audio_url = None
-            if 'formats' in info:
-                for f in info['formats']:
-                    if f.get('vcodec') == 'none' and f.get('acodec') != 'none':
-                        audio_url = f.get('url')
+            # ভিডিওর আসল নাম এবং ডাটা সংগ্রহ
+            title = info.get('title', 'Sabbir Video')
+            thumbnail = info.get('thumbnail')
+
+            # এপিআই এখন ভিডিওর ডাইরেক্ট ডাউনলোড লিঙ্ক দেবে (আপনার সার্ভার থেকে)
+            # মনে রাখবেন, রেন্ডারে ফাইল বেশিক্ষণ থাকে না, তাই সাথে সাথে পাঠাতে হবে
+            return jsonify({
+                "status": "success",
+                "title": title,
+                "video_url": f"{request.host_url}files/{os.path.basename(actual_filename)}",
+                "thumbnail": thumbnail
+            })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ফাইল সার্ভ করার রুট
+@app.route('/files/<filename>')
+def serve_file(filename):
+    file_path = os.path.join(DOWNLOAD_FOLDER, filename)
+    
+    # ফাইল পাঠানোর পর ডিলিট করার লজিক (Custom Response)
+    def generate():
+        with open(file_path, 'rb') as f:
+            yield from f
+        try:
+            os.remove(file_path) # ফাইল পাঠানো শেষ হলে ডিলিট করে দিবে
+            print(f"Deleted: {filename}")
+        except Exception as e:
+            print(f"Error deleting: {e}")
+
+    return app.response_class(generate(), mimetype='video/mp4')
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
                         break
             
             # যদি আলাদা অডিও না পাওয়া যায়, তবে ভিডিওর লিঙ্কটিকেই অডিও হিসেবে ব্যবহার করা যাবে
